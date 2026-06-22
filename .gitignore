@@ -1,0 +1,12 @@
+# 构建输出
+out/
+build/
+
+# Visual Studio
+.vs/
+
+# bin/：使用者把 kpatcher 等 host 工具放这里（本地，不提交）
+bin/
+
+# LIEF 构建产物（如本地引用）
+LIEF/build/

@@ -1,0 +1,25 @@
+{
+    "version": 3,
+    "configurePresets": [
+        {
+            "name": "android-arm64",
+            "displayName": "Android arm64-v8a (NDK)",
+            "description": "NDK 交叉编译到 Android arm64。NDK 和 ninja 路径按本机硬编码，开源前可改为 ${env:ANDROID_NDK_HOME}。",
+            "generator": "Ninja",
+            "binaryDir": "${sourceDir}/out/build/${presetName}",
+            "toolchainFile": "C:/Users/lenovo/AppData/Local/Android/Sdk/ndk/29.0.14206865/build/cmake/android.toolchain.cmake",
+            "cacheVariables": {
+                "ANDROID_ABI": "arm64-v8a",
+                "ANDROID_PLATFORM": "android-21",
+                "CMAKE_BUILD_TYPE": "Release",
+                "CMAKE_MAKE_PROGRAM": "C:/Users/lenovo/AppData/Local/Android/Sdk/cmake/4.1.2/bin/ninja.exe"
+            }
+        }
+    ],
+    "buildPresets": [
+        {
+            "name": "android-arm64",
+            "configurePreset": "android-arm64"
+        }
+    ]
+}
