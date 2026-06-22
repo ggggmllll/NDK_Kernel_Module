@@ -552,6 +552,20 @@ static const u32 thunk_tmpl[8] = {
 static chain_t chains[CHAIN_NUM];
 static u32 *thunk_addrs[CHAIN_NUM];
 
+/* 判断地址是否落在某个 hook thunk 页内。
+ * cfi_bypass 用：thunk 区域的间接调用也跳过 CFI 检查。
+ * thunk 在 vmalloc 页内，按页对齐判断。 */
+int is_thunk_area(unsigned long addr)
+{
+    for (int i = 0; i < CHAIN_NUM; i++) {
+        if (!thunk_addrs[i]) continue;
+        unsigned long start = (unsigned long)thunk_addrs[i] & ~(PAGE_SIZE - 1);
+        if (addr >= start && addr < start + PAGE_SIZE)
+            return 1;
+    }
+    return 0;
+}
+
 /* syscall hook 状态（文件 static，不导出）*/
 static int has_syscall_wrapper = 0;
 static unsigned long sys_call_table_addr = 0;

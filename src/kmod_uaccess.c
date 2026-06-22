@@ -2,7 +2,7 @@
  * kmod_uaccess.c — kmod_uaccess.h 的实现（跨内核/用户态安全拷贝）
  *
  * 库文件：CMake 编译一次，多 .c 模块链接共享。cached 的内核 fn 地址在
- * compact_uaccess_init()（模块 init 早期）一次解析。
+ * compat_uaccess_init()（模块 init 早期）一次解析。
  */
 
 #include "kmod_uaccess.h"
@@ -20,7 +20,7 @@ static unsigned long cached_ttbr0_disable = 0;
  * fault 时 rem 保留为剩余未拷贝字节数。 */
 
 __attribute__((noinline, no_sanitize("cfi"), no_sanitize("kcfi")))
-static unsigned long compact_sttr_copy_to(void *to, const void *from, unsigned long n)
+static unsigned long compat_sttr_copy_to(void *to, const void *from, unsigned long n)
 {
     unsigned long to_a  = (unsigned long)to;
     unsigned long frm_a = (unsigned long)from;
@@ -49,7 +49,7 @@ static unsigned long compact_sttr_copy_to(void *to, const void *from, unsigned l
 }
 
 __attribute__((noinline, no_sanitize("cfi"), no_sanitize("kcfi")))
-static unsigned long compact_ldtr_copy_from(void *to, const void *from, unsigned long n)
+static unsigned long compat_ldtr_copy_from(void *to, const void *from, unsigned long n)
 {
     unsigned long to_a  = (unsigned long)to;
     unsigned long frm_a = (unsigned long)from;
@@ -78,7 +78,7 @@ static unsigned long compact_ldtr_copy_from(void *to, const void *from, unsigned
 }
 
 __attribute__((noinline, no_sanitize("cfi"), no_sanitize("kcfi")))
-static long compact_ldtrstr_from_user(char *dest, const char __user *src, long max)
+static long compat_ldtrstr_from_user(char *dest, const char __user *src, long max)
 {
     long copied = 0;
     unsigned long s = (unsigned long)src;
@@ -132,7 +132,7 @@ static void uaccess_ttbr0_end(void)
 /* ==================== init（暴露） ====================
  * 解析内核 uaccess 函数 + ttbr0 开关。不同内核版本符号名不同，逐个尝试。
  * 必须在 kallsyms_init() 之后调用。 */
-void compact_uaccess_init(void)
+void compat_uaccess_init(void)
 {
     static const char *ctou[] = {
         "_copy_to_user", "copy_to_user", "__arch_copy_to_user",
@@ -158,7 +158,7 @@ void compact_uaccess_init(void)
 /* ==================== wrap（暴露） ==================== */
 
 __attribute__((no_sanitize("cfi"), no_sanitize("kcfi")))
-unsigned long compact_copy_to_user(void *to, const void *from, unsigned long n)
+unsigned long compat_copy_to_user(void *to, const void *from, unsigned long n)
 {
     if ((unsigned long)to >= KERNEL_SPACE_BASE) {
         __builtin_memcpy(to, from, n);
@@ -170,13 +170,13 @@ unsigned long compact_copy_to_user(void *to, const void *from, unsigned long n)
     }
     unsigned long rem;
     uaccess_ttbr0_begin();
-    rem = compact_sttr_copy_to(to, from, n);
+    rem = compat_sttr_copy_to(to, from, n);
     uaccess_ttbr0_end();
     return rem;
 }
 
 __attribute__((no_sanitize("cfi"), no_sanitize("kcfi")))
-unsigned long compact_copy_from_user(void *to, const void *from, unsigned long n)
+unsigned long compat_copy_from_user(void *to, const void *from, unsigned long n)
 {
     unsigned long rem;
 
@@ -189,7 +189,7 @@ unsigned long compact_copy_from_user(void *to, const void *from, unsigned long n
         rem = ((fn_t)cached_copy_from_user)(to, from, n);
     } else {
         uaccess_ttbr0_begin();
-        rem = compact_ldtr_copy_from(to, from, n);
+        rem = compat_ldtr_copy_from(to, from, n);
         uaccess_ttbr0_end();
     }
     if (rem) memset((char *)to + (n - rem), 0, rem);
@@ -197,7 +197,7 @@ unsigned long compact_copy_from_user(void *to, const void *from, unsigned long n
 }
 
 __attribute__((no_sanitize("cfi"), no_sanitize("kcfi")))
-long compact_strncpy_from_user(char *dest, const char __user *src, long max)
+long compat_strncpy_from_user(char *dest, const char __user *src, long max)
 {
     long ret;
 
@@ -214,7 +214,7 @@ long compact_strncpy_from_user(char *dest, const char __user *src, long max)
     }
 
     uaccess_ttbr0_begin();
-    ret = compact_ldtrstr_from_user(dest, src, max);
+    ret = compat_ldtrstr_from_user(dest, src, max);
     uaccess_ttbr0_end();
     return ret;
 }

@@ -19,6 +19,9 @@
 long do_hook(void *func, void *replace, void **backup);
 void do_unhook(void *func);
 
+/* 判断地址是否落在 hook thunk 页内（cfi_bypass 用）*/
+int is_thunk_area(unsigned long addr);
+
 /* ---- wrap hook（before/after 回调，基于 thunk 池）----
  *   hook_wrap(func, argno, before, after, udata)
  *       每次 func 被调用时：before(fargs,udata) → 原函数 → after(fargs,udata)。

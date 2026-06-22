@@ -65,7 +65,7 @@ NDK 编译内核模块时没有 `<linux/*>`、也没有 libc。`include/` + `src
 | `kmod_types.h` | 基本类型（u8/u16/.../bool）、宏（offsetof/container_of）、双链表 list_head |
 | `kmod_string.h` | 最小 libc：strcmp/strlen/memcpy/memset 等（static inline，无状态）|
 | `kmod_kernel.h` | klog / klog_deferred / kallsyms 基础设施 / kernel API extern / patch 基础设施（call_*、pgtable、patch_insn）/ kmod_read_file |
-| `kmod_uaccess.h` | 跨内核/用户态安全拷贝（compact_copy_to/from_user、compact_strncpy_from_user）|
+| `kmod_uaccess.h` | 跨内核/用户态安全拷贝（compat_copy_to/from_user、compat_strncpy_from_user）|
 | `kmod_hook.h` | ARM64 inline hook（do_hook/hook_wrap）+ syscall hook + 自定义 syscall 注册 |
 | `kmod_module.h` | INIT_MODULE / EXIT_MODULE 宏（模块入口封装）|
 

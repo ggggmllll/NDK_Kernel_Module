@@ -1,23 +1,30 @@
 /*
- * loader.c —— 用 kmod 框架实现的示例内核模块。
+ * loader.c — KPM loader 模块入口
  *
- * INIT_MODULE 宏内部依次跑 kallsyms_init / kmod_patch_init /
- * compact_uaccess_init（把 klog / patch / uaccess 都准备好），再调 loader_init。
- * 要 hook 内核函数、注册自定义 syscall，在 loader_init 里调
- * do_hook(...) / KMOD_REGISTER_SYSCALL(...) 即可。
+ * INIT_MODULE 自动跑 kallsyms_init / kmod_patch_init / compat_uaccess_init，
+ * 之后 loader_init 依次串起各子系统，把完整的 KPM loader 搭起来：
+ *   KPM 链表/锁 → CFI bypass → KP 兼容 API 表 → 自定义 syscall
+ *
+ * 各子系统的业务实现见同目录其它 .c；本文件只编排调用顺序。
  */
-
-#include "kmod_module.h"
+#include "kpm_internal.h"
 
 static int loader_init(void)
 {
-    klog("loader: module loaded\n");
+    kpm_loader_init_subsys();   /* 链表 + 锁 */
+    cfi_bypass_init();          /* hook __cfi_slowpath / report_cfi_failure */
+    kp_compat_init();           /* loader_api 表 + local_syms */
+    kpm_syscall_register();     /* 注册 KPM loader 自定义 syscall */
+    klog("kpm_loader: initialized\n");
     return 0;
 }
 
 static void loader_exit(void)
 {
-    klog("loader: module unloaded\n");
+    kpm_syscall_unregister();
+    unload_all_kpms();
+    cfi_bypass_exit();
+    klog("kpm_loader: exited\n");
 }
 
 INIT_MODULE(loader_init)

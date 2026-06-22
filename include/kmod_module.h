@@ -20,14 +20,14 @@
  *   EXIT_MODULE(my_exit)
  *
  * 不需要 uaccess 的模块，可以在 INIT_MODULE 之后自己再调一次
- * compact_uaccess_init()（幂等），或改写宏去掉那一行。
+ * compat_uaccess_init()（幂等），或改写宏去掉那一行。
  */
 
 #define INIT_MODULE(func)                              \
     int init_module_impl(void) {                       \
         kallsyms_init();                               \
         kmod_patch_init();                             \
-        compact_uaccess_init();                        \
+        compat_uaccess_init();                        \
         return func();                                 \
     }
 
