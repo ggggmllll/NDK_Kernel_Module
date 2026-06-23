@@ -12,7 +12,7 @@ KPatcher 产出的 `.ko` 是一份**模板**：vermagic 是占位符、`module_l
 
 1. **vermagic**：从参考 `.ko` 的 `.modinfo` 提取 vermagic 字符串，覆盖模板里的占位符。
 2. **module_layout CRC**：从参考 `.ko` 的 `__versions` 提取 `module_layout` 的 CRC，写入模板。
-3. **`.gnu.linkonce.this_module`**：保留 KPatcher 写好的 2048 字节干净占位（**不**拷贝参考 `.ko` 的 `struct module`——那里面有另一台内核的陈旧指针，会让 `rmmod` 崩溃），只写入模块名（取自参考 `.ko`）。
+3. **`.gnu.linkonce.this_module`**：保留 KPatcher 写好的 2048 字节干净占位（**不**拷贝参考 `.ko` 的 `struct module`——那里面有另一台内核的陈旧指针，会让 `rmmod` 崩溃）。模块名**不改**：KPatcher 已用 `-n <MODULE_NAME>` 写好正确的名字（且与 `.modinfo` 的 `name=` 一致），fixup_ko 只读出来打印确认。绝不回写参考 `.ko` 的名字——那是随手挑的某个 vendor 模块名，覆盖后 `lsmod`/`rmmod` 会用错名字，若该参考模块已 `insmod` 还会让目标模块撞 `EEXIST`。
 4. **init/exit 重定位偏移**：扫描参考 `.ko` 的 `.rela.gnu.linkonce.this_module`，取 `STT_FUNC` 类型的重定位按 offset 排序，第一个对应 `init_module`、第二个对应 `cleanup_module`，据此修正模板的重定位偏移。
 5. **kallsyms 地址**：程序里埋了 32 字节魔术串，fixup_ko 在 `.ko` 里扫描它，把 `kallsyms_lookup_name` 的真实地址写进后面的 8 字节。以 root 运行时会自动把 `/proc/sys/kernel/kptr_restrict` 置 0，以便读到真实地址。
 

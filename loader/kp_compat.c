@@ -84,6 +84,20 @@ static struct {
     {"sp_el0_is_thread_info",      0, 0},
     {"thread_size",                0, 0},
     {"task_in_thread_info_offset", 0, 0},
+    /* libc 基础（kmod_string.h 的 static inline 副本地址）*/
+    {"strncmp", 0, 1},
+    {"strchr",  0, 1},
+    {"strrchr", 0, 1},
+    {"strstr",  0, 1},
+    {"strcat",  0, 1},
+    {"strnlen", 0, 1},
+    {"memchr",  0, 1},
+    {"memrchr", 0, 1},
+    {"strtol",  0, 1},
+    {"strtoul", 0, 1},
+    {"snprintf", 0, 1},
+    {"compat_copy_from_user", 0, 1},
+    {"hook", 0, 1},
     {NULL, 0, 0}
 };
 
@@ -149,6 +163,20 @@ static void local_syms_init(void)
     local_syms[25].addr = (unsigned long)&kp_sp_el0_is_thread_info;
     local_syms[26].addr = (unsigned long)&kp_thread_size;
     local_syms[27].addr = (unsigned long)&kp_task_in_thread_info_offset;
+    /* libc 基础函数 */
+    local_syms[28].addr = (unsigned long)&strncmp;
+    local_syms[29].addr = (unsigned long)&strchr;
+    local_syms[30].addr = (unsigned long)&strrchr;
+    local_syms[31].addr = (unsigned long)&strstr;
+    local_syms[32].addr = (unsigned long)&strcat;
+    local_syms[33].addr = (unsigned long)&strnlen;
+    local_syms[34].addr = (unsigned long)&memchr;
+    local_syms[35].addr = (unsigned long)&memrchr;
+    local_syms[36].addr = (unsigned long)&strtol;
+    local_syms[37].addr = (unsigned long)&strtoul;
+    local_syms[38].addr = (unsigned long)&snprintf;
+    local_syms[39].addr = (unsigned long)&compat_copy_from_user;
+    local_syms[40].addr = (unsigned long)&do_hook;   /* KernelPatch hook() 别名 */
 
     /* 探测内核版本：linux_banner（最稳）→ init_uts_ns.name.release（偏移试探）*/
     int major = 0, minor = 0, patch = 0;

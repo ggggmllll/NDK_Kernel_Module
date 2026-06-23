@@ -84,17 +84,34 @@ unsigned long kallsyms_lookup(const char *name)
 void kallsyms_init(void)
 {
     unsigned long addr = 0;
-    if (kallsyms_patch.addr != 0) {
-        kallsyms_lookup_name_fn = (typeof(kallsyms_lookup_name_fn))kallsyms_patch.addr;
-        resolve_printk();
-    }
-    if (!kallsyms_lookup_name_fn) {
-        addr = strat_kprobe_kallsyms();
-        if (addr) { kallsyms_lookup_name_fn = (typeof(kallsyms_lookup_name_fn))addr; resolve_printk(); }
-    }
+
+    /* 策略顺序按【对 KASLR 的健壮性】排：运行期自解析优先，注入的 marker
+     * 只作最后兜底。
+     *
+     * marker（kallsyms_patch.addr）是 fixup_ko 在【某次启动】按 /proc/kallsyms
+     * 写死的绝对地址 —— KASLR 每次启动重随机化内核基址，跨重启复用必然指向
+     * 错误/未映射地址，加载即崩。所以不能再把它放第一位无条件信任。
+     *
+     * kprobe / %ps 扫描都在【本次启动】实时求值，KASLR 免疫，开机即可用，
+     * 无需 fixup。只有这两者都失败（内核裁了 kprobe、符号扫描没命中）才退回
+     * marker，且仅当它落在内核地址空间才采用（挡掉陈旧的用户态/垃圾值）。 */
+
+    /* 策略 1：kprobe（KASLR 免疫，无需 fixup） */
+    addr = strat_kprobe_kallsyms();
+    if (addr) { kallsyms_lookup_name_fn = (typeof(kallsyms_lookup_name_fn))addr; resolve_printk(); }
+
+    /* 策略 2：%ps 扫描（KASLR 免疫，较慢但通用） */
     if (!kallsyms_lookup_name_fn) {
         addr = strat_sprintf_scan();
         if (addr) { kallsyms_lookup_name_fn = (typeof(kallsyms_lookup_name_fn))addr; resolve_printk(); }
+    }
+
+    /* 策略 3（兜底）：fixup_ko 注入的 marker —— 仅当上面都失败，且地址落在
+     * 内核空间（高半 canonical）才用，避免跨重启的陈旧地址直接崩内核。 */
+    if (!kallsyms_lookup_name_fn &&
+        kallsyms_patch.addr >= 0xffff000000000000UL) {
+        kallsyms_lookup_name_fn = (typeof(kallsyms_lookup_name_fn))kallsyms_patch.addr;
+        resolve_printk();
     }
 }
 

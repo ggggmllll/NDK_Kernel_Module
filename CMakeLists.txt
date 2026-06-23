@@ -31,6 +31,24 @@ if(NOT KPATCHER)
 endif()
 message(STATUS "KPatcher: ${KPATCHER}")
 
+# ---- 内核模块编译标志 ----
+# 内核模块由【真机内核】的模块加载器（arch/arm64/kernel/module.c）加载，
+# 它不支持 GOT 重定位（R_AARCH64_ADR_GOT_PAGE=311 / LD64_GOT_LO12_NC=312）。
+# NDK 默认 -fPIC 会让外部符号引用走 GOT → insmod 报
+#   "module loader: unsupported RELA relocation: 311"。
+# 必须用内核 code model 编译：-fno-PIC -mcmodel=small（对齐参考实现
+# loader/template/Makefile 的 CFLAGS_BASE）。
+#
+# 另外 NDK 工具链文件默认注入用户态 Bionic 设施，在内核态会崩：
+#   -fstack-protector*：canary 走 MRS TPIDR_EL0 + [tls+0x28]（Bionic
+#     TLS_SLOT_STACK_GUARD）。内核态 TPIDR_EL0 是用户 TLS 指针 → 读用户地址
+#     → PAN 触发 "kernel access to user memory"。必须 -fno-stack-protector。
+#   _FORTIFY_SOURCE：依赖 Bionic 的 __*_chk，内核没有。关掉。
+# 注意：只加在内核侧 OBJECT 库上，fixup_ko 是 Android PIE 用户态程序，保持默认。
+set(KMOD_FLAGS
+    -fno-PIC -mcmodel=small -fvisibility=hidden
+    -fno-stack-protector -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0)
+
 # ---- kmod 基础设施库（模板自带；含 CFI entry stubs）----
 add_library(kmod OBJECT
     src/kmod_kernel.c
@@ -38,6 +56,7 @@ add_library(kmod OBJECT
     src/kmod_hook.c
     src/cfi_entry_stubs.S)
 target_include_directories(kmod PUBLIC include)
+target_compile_options(kmod PRIVATE ${KMOD_FLAGS})
 
 # ---- fixup_ko（上机修补工具，Android 可执行）----
 add_subdirectory(fixup_ko)

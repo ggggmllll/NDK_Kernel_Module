@@ -320,10 +320,16 @@ static int patch_crc(ElfFile *ef, unsigned long crc, size_t crc_size) {
 }
 
 /*
- * Patch .gnu.linkonce.this_module — only write the module name.
+ * Patch .gnu.linkonce.this_module.
+ *
  * We keep KPatcher's clean 2048-byte placeholder instead of copying the
  * reference's entire struct module (which contains stale pointers from a
  * different kernel and causes rmmod crashes).
+ *
+ * The module name is left as KPatcher wrote it (via -n <MODULE_NAME>): pass
+ * new_name = NULL to leave it untouched and only report it. A non-NULL
+ * new_name overwrites the name (kept for callers that explicitly want to
+ * rename); never feed it the reference .ko's name — see the call site.
  *
  * The init/exit relocation offsets are handled separately by
  * patch_rela_offsets().
@@ -344,16 +350,23 @@ static int patch_this_module(ElfFile *ef, ElfFile *ref_ef,
 	size_t name_off = ef->is64 ? 24 : 16;
 	size_t name_max = ef->is64 ? MODULE_NAME_LEN_64 : MODULE_NAME_LEN_32;
 
-	/* Write the new module name */
 	if (new_name && new_name[0]) {
+		/* Explicit rename requested */
 		size_t name_len = strlen(new_name);
 		if (name_len > name_max - 1) name_len = name_max - 1;
 		memset(tgt_data + name_off, 0, name_max);
 		memcpy(tgt_data + name_off, new_name, name_len);
+		printf("Patched this_module: size %zu, name set to '%s' at offset %zu\n",
+		       tgt_size, new_name, name_off);
+	} else {
+		/* Keep KPatcher's name; just report it (NUL-terminated for safety) */
+		char cur[MODULE_NAME_LEN_64];
+		size_t n = name_max < sizeof(cur) ? name_max : sizeof(cur);
+		memcpy(cur, tgt_data + name_off, n - 1);
+		cur[n - 1] = '\0';
+		printf("Patched this_module: size %zu, name kept as '%s' at offset %zu\n",
+		       tgt_size, cur, name_off);
 	}
-
-	printf("Patched this_module: size %zu, name='%s' at offset %zu\n",
-	       tgt_size, new_name ? new_name : "(unchanged)", name_off);
 	return 0;
 }
 
@@ -813,11 +826,12 @@ int main(int argc, char **argv) {
 		patch_crc(&target, ref_crc, crc_size);
 	}
 
-	/* 修补 .gnu.linkonce.this_module（name 取自参考） */
-	{
-		const char *name_to_set = saved_ref_name[0] ? saved_ref_name : NULL;
-		patch_this_module(&target, &ref, saved_ref_name, name_to_set);
-	}
+	/* 修补 .gnu.linkonce.this_module。
+	 * name 不动——KPatcher 已用 -n <MODULE_NAME> 写好了正确的模块名（且与
+	 * .modinfo 的 name= 一致）。参考 .ko 的名字只用于上面的日志，绝不能回写：
+	 * 那是随手挑的某个 vendor 模块名，覆盖后 lsmod/rmmod 会用错名字，若该参考
+	 * 模块已 insmod 还会让 loader 撞 EEXIST。 */
+	patch_this_module(&target, &ref, saved_ref_name, NULL);
 
 	/* 修正 init/exit 重定位偏移（参考已确认带这两项） */
 	if (patch_rela_offsets(&target, &ref) != 0) {

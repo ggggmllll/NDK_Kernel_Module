@@ -8,6 +8,9 @@ file(GLOB MODULE_C_SRC CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/*.c")
 
 add_library(module_objs OBJECT ${MODULE_C_SRC})
 target_link_libraries(module_objs PRIVATE kmod)
+# 内核模块 code model（见根 CMakeLists 的 KMOD_FLAGS 说明）：
+# 必须 -fno-PIC，否则外部符号走 GOT，真机内核模块加载器拒绝 reloc 311/312。
+target_compile_options(module_objs PRIVATE ${KMOD_FLAGS})
 
 set(MERGED_OBJ "${CMAKE_BINARY_DIR}/${MODULE_NAME}_merged.o")
 set(OBJS_RSP   "${CMAKE_BINARY_DIR}/${MODULE_NAME}_objs.rsp")
