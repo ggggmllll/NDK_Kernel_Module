@@ -61,5 +61,8 @@ target_compile_options(kmod PRIVATE ${KMOD_FLAGS})
 # ---- fixup_ko（上机修补工具，Android 可执行）----
 add_subdirectory(fixup_ko)
 
+# ---- kpmctl（用户态命令行：调 loader syscall 加载/卸载 KPM）----
+add_subdirectory(kpmctl)
+
 # ---- 使用者模块 ----
 add_subdirectory(${MODULE_DIR})
