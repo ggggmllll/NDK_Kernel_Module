@@ -126,6 +126,10 @@ extern void iov_iter_kvec(struct iov_iter *i, unsigned int direction,
  * f_op->read（/proc 类文件）。*pos 为文件偏移，返回读取字节数。*/
 long kmod_read_file(struct file *filp, void *buf, unsigned long len, long long *pos);
 
+/* 读整个文件到 vmalloc 缓冲（filp_open 懒解析）。成功返回数据指针(末尾补 \0)
+ * 并经 *out_size 回传长度，用完 vfree；失败返回 NULL。max_size=0 用默认 16MB。 */
+void *kmod_read_whole_file(const char *path, long *out_size, unsigned long max_size);
+
 /* =========================================================================
  * patch 基础设施（call_* + pgtable）
  *

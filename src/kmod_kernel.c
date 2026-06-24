@@ -225,6 +225,43 @@ long kmod_read_file(struct file *filp, void *buf, unsigned long len, long long *
     return 0;
 }
 
+/* ---- 读整个文件到 vmalloc 缓冲（共享封装）----
+ * filp_open 懒解析（GKI 6.1 不导出）；成功返回 vmalloc 的数据指针并经
+ * *out_size 回传长度（调用方用完 vfree）；失败返回 NULL。
+ * max_size 限制读取上限（防异常大文件），传 0 表示用默认 16MB。 */
+__attribute__((no_sanitize("cfi"), no_sanitize("kcfi")))
+void *kmod_read_whole_file(const char *path, long *out_size, unsigned long max_size)
+{
+    static unsigned long fn_open = 0;
+    static int tried = 0;
+    if (out_size) *out_size = 0;
+    if (!max_size) max_size = 16UL << 20;
+
+    if (!tried) { fn_open = kallsyms_lookup("filp_open"); tried = 1; }
+    if (!fn_open) return 0;
+    typedef struct file *(*open_t)(const char *, int, int);
+    struct file *filp = ((open_t)fn_open)(path, 0 /* O_RDONLY */, 0);
+    if (!filp || (unsigned long)filp >= 0xfffffffffffff000UL) return 0;
+
+    long long size = vfs_llseek(filp, 0, 2);   /* SEEK_END */
+    if (size <= 0 || (unsigned long long)size > max_size) {
+        filp_close(filp, 0);
+        return 0;
+    }
+    void *data = vmalloc((unsigned long)size + 1);
+    if (!data) { filp_close(filp, 0); return 0; }
+
+    long long pos = 0;
+    vfs_llseek(filp, 0, 0);                     /* SEEK_SET */
+    long nread = kmod_read_file(filp, data, (unsigned long)size, &pos);
+    filp_close(filp, 0);
+    if (nread <= 0) { vfree(data); return 0; }
+
+    ((char *)data)[nread] = '\0';               /* 便于文本解析 */
+    if (out_size) *out_size = nread;
+    return data;
+}
+
 /* ---- pgtable（文件 static）----
  * set_memory_rw 只对 vmalloc 页生效；__ro_after_init / rodata 要走页表。 */
 #define PTE_VALID       (1UL << 0)

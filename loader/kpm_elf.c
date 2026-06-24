@@ -883,17 +883,7 @@ long api_kpm_control(const char *name, const char *args, char *out_msg, int outl
     return call_kpm_ctl0(*mod->ctl0, args, out_msg, outlen);
 }
 
-/* filp_open 在 GKI 6.1 不导出 —— 懒解析。 */
-__attribute__((no_sanitize("cfi"), no_sanitize("kcfi")))
-static struct file *call_filp_open(const char *path, int flags, int mode)
-{
-    static unsigned long fn = 0;
-    static int tried = 0;
-    if (!tried) { fn = kallsyms_lookup("filp_open"); tried = 1; }
-    if (!fn) return NULL;
-    typedef struct file *(*fn_t)(const char *, int, int);
-    return ((fn_t)fn)(path, flags, mode);
-}
+/* filp_open / 读整文件已收敛到 kmod_kernel.c 的 kmod_read_whole_file。 */
 
 static void *kpm_alloc(unsigned long size)
 {
@@ -1164,38 +1154,14 @@ long load_kpm_file(const char *path, const char *args)
 {
     if (!path) return -1;
 
-    struct file *filp = call_filp_open(path, O_RDONLY, 0);
-    if (!filp || (unsigned long)filp >= 0xfffffffffffff000UL) {
-        klog("kpm_loader: cannot open %s\n", path);
-        return (long)filp;
-    }
-
-    long long size = vfs_llseek(filp, 0, 2);   /* SEEK_END */
-    if (size <= 0) {
-        klog("kpm_loader: vfs_llseek %s returned %lld\n", path, size);
-        filp_close(filp, NULL);
+    long size = 0;
+    void *data = kmod_read_whole_file(path, &size, 0);
+    if (!data || size <= 0) {
+        klog("kpm_loader: cannot read %s\n", path);
         return -1;
     }
 
-    void *data = vmalloc(size);
-    if (!data) {
-        klog("kpm_loader: vmalloc(%lld) failed for %s\n", size, path);
-        filp_close(filp, NULL);
-        return -3;
-    }
-
-    long long pos = 0;
-    vfs_llseek(filp, 0, 0);   /* SEEK_SET */
-    long nread = kmod_read_file(filp, data, size, &pos);
-    filp_close(filp, NULL);
-
-    if (nread != size) {
-        klog("kpm_loader: short read on %s: %ld != %lld\n", path, nread, size);
-        vfree(data);
-        return -1;
-    }
-
-    klog("kpm_loader: read %s (%lld bytes), parsing KPM\n", path, size);
+    klog("kpm_loader: read %s (%ld bytes), parsing KPM\n", path, size);
     long rc = load_kpm_from_data(data, size, args, "load-file");
     vfree(data);
     return rc;
