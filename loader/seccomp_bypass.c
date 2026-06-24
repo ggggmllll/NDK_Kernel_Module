@@ -206,8 +206,14 @@ static int replace_commit_creds(void *new_cred)
             unsigned long *flags_p = (unsigned long *)task;
             int was_set = (*flags_p >> TIF_SECCOMP) & 1;
             atomic_clear_bit(flags_p, TIF_SECCOMP);
-            if (off_task_seccomp)
-                *(unsigned int *)(task + off_task_seccomp) = 0;
+            if (off_task_seccomp) {
+                /* struct seccomp: mode@+0, filter_count@+4, filter@+8。
+                 * 清 mode=0 + filter_count=0，避免 /proc/pid/status 出现
+                 * "Seccomp:0 但 Seccomp_filters:1" 的矛盾态（反作弊检测点）。
+                 * filter 指针保留，让进程退出时内核正常释放过滤器链。 */
+                *(unsigned int *)(task + off_task_seccomp)     = 0;  /* mode */
+                *(unsigned int *)(task + off_task_seccomp + 4) = 0;  /* filter_count */
+            }
             /* 只在真清掉了（之前 TIF_SECCOMP 还在）时打一次，避免刷屏 */
             if (was_set)
                 klog("kpm_loader: seccomp exempt uid=%u (cleared)\n", uid);
