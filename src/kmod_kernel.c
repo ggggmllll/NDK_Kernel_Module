@@ -7,6 +7,7 @@
  */
 
 #include "kmod_kernel.h"
+#include "kmod_kcfi.h"
 
 /* ==================== klog + kallsyms 基础设施 ==================== */
 void (*klog)(const char *fmt, ...) = 0;
@@ -334,7 +335,7 @@ static int g_in_stop_machine = 0;
 
 void patch_set_in_stop_machine(int flag) { g_in_stop_machine = flag; }
 
-static int patch_insn_stop_cb(void *data)
+KCFI_CALLBACK(patch_insn_stop_cb, KCFI_HASH_INT_PTR, void *data)
 {
     struct patch_insn_data *pd = data;
     u64 va = (u64)pd->addr;

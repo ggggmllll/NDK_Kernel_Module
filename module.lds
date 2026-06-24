@@ -10,6 +10,13 @@ SECTIONS
 		   使 handler-4 落在 prefix 的 hash 字段；register_syscall 偷原 hash 写入）*/
 		*(.kcfi_prefix.syscall_handler)
 		*(.text.syscall_handler)
+		/* kCFI 回调 hash 前缀：每个 .kcfi_prefix.cb.<name> 紧贴对应
+		   .text.kcfi_cb.<name> 之前，使 hash 落在函数入口 -4。
+		   每加一个被内核回调的 loader 函数，就在此补一对（顺序 prefix→body）。 */
+		*(.kcfi_prefix.cb.hook_install_stop_cb)
+		*(.text.kcfi_cb.hook_install_stop_cb)
+		*(.kcfi_prefix.cb.patch_insn_stop_cb)
+		*(.text.kcfi_cb.patch_insn_stop_cb)
 		*(.text.*)
 	}
 

@@ -12,6 +12,7 @@
 #include "kmod_hook.h"
 #include "kmod_kernel.h"
 #include "kmod_string.h"
+#include "kmod_kcfi.h"
 
 /* ---- ARM64 指令 / 工具宏 ---- */
 #define ARM64_NOP      0xd503201f
@@ -455,8 +456,10 @@ static void hook_uninstall(hook_t *hook)
 }
 
 /* stop_machine callback：所有 CPU 停时装 hook，消除竞态。
- * 设 g_in_stop_machine 让 patch_insn 跳过 nested stop_machine/synchronize_rcu。 */
-static int hook_install_stop_cb(void *data)
+ * 设 g_in_stop_machine 让 patch_insn 跳过 nested stop_machine/synchronize_rcu。
+ * 内核 multi_cpu_stop 通过函数指针回调它 → 6.1 kCFI 要查 sym-4 的类型 hash，
+ * 故用 KCFI_CALLBACK 注入 int(*)(void*) 的 hash 前缀（见 kmod_kcfi.h）。 */
+KCFI_CALLBACK(hook_install_stop_cb, KCFI_HASH_INT_PTR, void *data)
 {
     hook_t *hook = data;
     patch_set_in_stop_machine(1);
