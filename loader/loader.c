@@ -13,6 +13,7 @@ static int loader_init(void)
 {
     kpm_loader_init_subsys();   /* 链表 + 锁 */
     cfi_bypass_init();          /* hook __cfi_slowpath / report_cfi_failure */
+    seccomp_bypass_init();      /* 按 UID 豁免 seccomp（目标进程才能调 syscall 448）*/
     kp_compat_init();           /* loader_api 表 + local_syms */
     kpm_syscall_register();     /* 注册 KPM loader 自定义 syscall */
     klog("kpm_loader: initialized\n");
@@ -23,6 +24,7 @@ static void loader_exit(void)
 {
     kpm_syscall_unregister();
     unload_all_kpms();
+    seccomp_bypass_exit();
     cfi_bypass_exit();
     klog("kpm_loader: exited\n");
 }

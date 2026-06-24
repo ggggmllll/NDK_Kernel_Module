@@ -86,6 +86,10 @@ long api_kpm_control(const char *name, const char *args, char *out_msg, int outl
 void cfi_bypass_init(void);
 void cfi_bypass_exit(void);
 
+/* seccomp_bypass.c：按 UID 豁免 seccomp，让目标进程能调自定义 syscall 加载 KPM */
+void seccomp_bypass_init(void);
+void seccomp_bypass_exit(void);
+
 /* kp_compat.c：KernelPatch KPM 兼容符号表（local_syms）*/
 void kp_compat_init(void);
 

@@ -47,7 +47,8 @@ message(STATUS "KPatcher: ${KPATCHER}")
 # 注意：只加在内核侧 OBJECT 库上，fixup_ko 是 Android PIE 用户态程序，保持默认。
 set(KMOD_FLAGS
     -fno-PIC -mcmodel=small -fvisibility=hidden
-    -fno-stack-protector -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0)
+    -fno-stack-protector -U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0
+    -mno-outline-atomics)   # 内联 LSE/LLSC 原子，别调 __aarch64_*（内核无此符号 → ENOENT）
 
 # ---- kmod 基础设施库（模板自带；含 CFI entry stubs）----
 add_library(kmod OBJECT
