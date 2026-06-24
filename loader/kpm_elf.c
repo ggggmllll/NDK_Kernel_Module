@@ -749,9 +749,17 @@ static int kpm_build_got(struct kpm_module *mod, struct kpm_load_info *info)
             u64 val = syms[s].st_value;
             bool need_wrap = false;
             if (syms[s].st_shndx == SHN_UNDEF) {
+                /* kpm_simplify_symbols 已把 kf_ 符号的 st_value 设成 wrap 槽
+                 * 的【地址】(&kf_wrap_pool[k])。这里若 val 已落在 wrap_pool
+                 * 地址区间内，说明已经包过，绝不能再包 —— 否则 KPM 双重解引用
+                 * 后会落在 wrap 槽(数据,NX)而非真函数地址 → 执行 NX 崩。
+                 * 原代码比的是 val==kf_wrap_pool[w](槽内容,=真函数地址)，永远
+                 * 不等于槽地址 → 误判没包过 → 重复包装的 bug。 */
                 bool already_wrapped = false;
-                for (int w = 0; w < info->kf_wrap_count; w++) {
-                    if (info->kf_wrap_pool[w] == val) { already_wrapped = true; break; }
+                if (info->kf_wrap_pool) {
+                    u64 lo = (u64)info->kf_wrap_pool;
+                    u64 hi = lo + (u64)info->kf_wrap_max * sizeof(u64);
+                    if (val >= lo && val < hi) already_wrapped = true;
                 }
                 if (!already_wrapped && !is_local_data_sym((unsigned long)val)) {
                     need_wrap = true;
@@ -887,8 +895,8 @@ long api_kpm_control(const char *name, const char *args, char *out_msg, int outl
 
 static void *kpm_alloc(unsigned long size)
 {
-    /* 5.10 上 module_alloc + set_memory_x 组合不稳（PTE 改动静默失败），
-     * 统一用 vmalloc 换兼容性。 */
+    /* vmalloc + kpm_make_exec(set_memory_x) 设可执行。set_memory_x 只认
+     * VM_ALLOC + 在 vmalloc 区，与地址范围无关，vmalloc 完全够用。 */
     void *p = vmalloc(size);
     if (!p) return NULL;
     memset(p, 0, size);

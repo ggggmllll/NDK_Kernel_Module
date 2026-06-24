@@ -345,7 +345,7 @@ static hook_t *hook_alloc(u64 origin_addr)
     for (int i = 0; i < HOOK_REGION_SLOTS; i++) {
         if (!hook_slots[i].used) {
             unsigned long exec_size = PAGE_SIZE;
-            void *exec_mem = vmalloc(exec_size);
+            void *exec_mem = vmalloc(exec_size);   /* set_memory_x 在 hook_prepare 设可执行 */
             if (!exec_mem) return NULL;
             memset(exec_mem, 0, exec_size);
 
