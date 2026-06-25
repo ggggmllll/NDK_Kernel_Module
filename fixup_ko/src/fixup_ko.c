@@ -662,39 +662,7 @@ static void disable_kptr_restrict_if_root(void) {
 }
 
 /* ---------- Reference candidate checks ---------- */
-/* 判断参考 .ko 是否同时带 init_module 和 cleanup_module 的重定位
- * （.rela.gnu.linkonce.this_module）。二者缺一不可：缺 exit 会让模块
- * 变成 [permanent]，rmmod 返回 EBUSY。 */
-static int ref_has_init_exit(const ElfFile *ref_ef) {
-	size_t ref_size;
-	char *ref_data = (char *)elf_section_data(
-	    (ElfFile *)ref_ef, ".rela.gnu.linkonce.this_module", &ref_size);
-	if (!ref_data) return 0;
-
-	int ref_init_idx = find_symbol_index((ElfFile *)ref_ef, "init_module");
-	int ref_exit_idx = find_symbol_index((ElfFile *)ref_ef, "cleanup_module");
-	if (ref_init_idx < 0 || ref_exit_idx < 0) return 0;
-
-	int found_init = 0, found_exit = 0;
-	if (ref_ef->is64) {
-		size_t n = ref_size / sizeof(Elf64_Rela);
-		Elf64_Rela *rels = (Elf64_Rela *)ref_data;
-		for (size_t i = 0; i < n && !(found_init && found_exit); i++) {
-			uint32_t sym = (uint32_t)(rels[i].r_info >> 32);
-			if ((int)sym == ref_init_idx) found_init = 1;
-			else if ((int)sym == ref_exit_idx) found_exit = 1;
-		}
-	} else {
-		size_t n = ref_size / sizeof(Elf32_Rela);
-		Elf32_Rela *rels = (Elf32_Rela *)ref_data;
-		for (size_t i = 0; i < n && !(found_init && found_exit); i++) {
-			uint32_t sym = rels[i].r_info >> 8;
-			if ((int)sym == ref_init_idx) found_init = 1;
-			else if ((int)sym == ref_exit_idx) found_exit = 1;
-		}
-	}
-	return (found_init && found_exit);
-}
+/* ref_has_init_exit() is defined above (reloc-type based, lld-compatible). */
 
 /* 没给参考 .ko 时，在常见内核模块目录里找一个带 init/exit 重定位的 .ko。
  * 返回 malloc 的路径（调用方负责 free），找不到返回 NULL。 */
