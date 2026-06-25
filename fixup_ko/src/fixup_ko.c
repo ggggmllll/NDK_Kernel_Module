@@ -433,12 +433,45 @@ static int find_symbol_index(ElfFile *ef, const char *name) {
 
 /* ---------- Relocation offset patching ---------- */
 /*
- * Patch the .rela.gnu.linkonce.this_module relocation offsets to
- * match the reference .ko.  This ensures init/exit function pointers
- * land at the correct offsets within struct module even when the
- * target kernel's struct module layout differs from KPatcher's
- * hardcoded defaults.
+ * lld (used for Android vendor modules since ~2020) writes the init/exit
+ * pointers in .rela.gnu.linkonce.this_module as:
+ *   R_AARCH64_ABS64  .text_section_sym + addend   (section symbol, not named)
+ * GNU ld writes them as:
+ *   R_AARCH64_ABS64  init_module / cleanup_module  (named symbol)
+ *
+ * Both cases use R_AARCH64_ABS64 (type 257).  The r_offset fields contain
+ * the byte offsets of struct module.init and struct module.exit — which is
+ * exactly what we need for the struct-layout fixup.  So we collect those
+ * offsets purely by reloc type, ignoring symbol names entirely.
  */
+#define R_AARCH64_ABS64  257
+#define R_ARM_ABS32      2
+
+/* Return 1 if the section has at least 2 ABS64 (arm64) or ABS32 (arm32)
+ * relocations — those are the init/exit pointers. */
+static int ref_has_init_exit(const ElfFile *ref_ef) {
+	size_t ref_size;
+	char *ref_data = (char *)elf_section_data(
+	    (ElfFile *)ref_ef, ".rela.gnu.linkonce.this_module", &ref_size);
+	if (!ref_data) return 0;
+
+	int count = 0;
+	if (ref_ef->is64) {
+		size_t n = ref_size / sizeof(Elf64_Rela);
+		Elf64_Rela *rels = (Elf64_Rela *)ref_data;
+		for (size_t i = 0; i < n; i++)
+			if ((uint32_t)(rels[i].r_info & 0xffffffff) == R_AARCH64_ABS64)
+				count++;
+	} else {
+		size_t n = ref_size / sizeof(Elf32_Rela);
+		Elf32_Rela *rels = (Elf32_Rela *)ref_data;
+		for (size_t i = 0; i < n; i++)
+			if ((rels[i].r_info & 0xff) == R_ARM_ABS32)
+				count++;
+	}
+	return (count >= 2);
+}
+
 static int patch_rela_offsets(ElfFile *ef, ElfFile *ref_ef) {
 	size_t ref_size, tgt_size;
 	char *ref_data = (char *)elf_section_data(
@@ -452,48 +485,23 @@ static int patch_rela_offsets(ElfFile *ef, ElfFile *ref_ef) {
 		return 0;
 	}
 
-	/* Get symbol indices for init_module / cleanup_module */
-	int tgt_init_idx  = find_symbol_index(ef, "init_module");
-	int tgt_exit_idx  = find_symbol_index(ef, "cleanup_module");
-	int ref_init_idx  = find_symbol_index(ref_ef, "init_module");
-	int ref_exit_idx  = find_symbol_index(ref_ef, "cleanup_module");
-
-	if (tgt_init_idx < 0 || tgt_exit_idx < 0) {
-		fprintf(stderr, "Note: init_module/cleanup_module not found "
-		        "in target symtab, skipping offset fixup\n");
-		return 0;
-	}
-
-	/* Extract reference offsets for init and exit */
-	uint64_t ref_init_off = 0, ref_exit_off = 0;
+	/* Collect the r_offset values from the first 2 ABS64/ABS32 entries in
+	 * the reference — those are struct module.init and struct module.exit. */
+	uint64_t ref_offs[2] = {0, 0};
 	int ref_found = 0;
 
 	if (ref_ef->is64) {
 		size_t n = ref_size / sizeof(Elf64_Rela);
 		Elf64_Rela *rels = (Elf64_Rela *)ref_data;
-		for (size_t i = 0; i < n && ref_found < 2; i++) {
-			uint32_t sym = (uint32_t)(rels[i].r_info >> 32);
-			if (ref_init_idx >= 0 && (int)sym == ref_init_idx) {
-				ref_init_off = rels[i].r_offset;
-				ref_found++;
-			} else if (ref_exit_idx >= 0 && (int)sym == ref_exit_idx) {
-				ref_exit_off = rels[i].r_offset;
-				ref_found++;
-			}
-		}
+		for (size_t i = 0; i < n && ref_found < 2; i++)
+			if ((uint32_t)(rels[i].r_info & 0xffffffff) == R_AARCH64_ABS64)
+				ref_offs[ref_found++] = rels[i].r_offset;
 	} else {
 		size_t n = ref_size / sizeof(Elf32_Rela);
 		Elf32_Rela *rels = (Elf32_Rela *)ref_data;
-		for (size_t i = 0; i < n && ref_found < 2; i++) {
-			uint32_t sym = rels[i].r_info >> 8;
-			if (ref_init_idx >= 0 && (int)sym == ref_init_idx) {
-				ref_init_off = rels[i].r_offset;
-				ref_found++;
-			} else if (ref_exit_idx >= 0 && (int)sym == ref_exit_idx) {
-				ref_exit_off = rels[i].r_offset;
-				ref_found++;
-			}
-		}
+		for (size_t i = 0; i < n && ref_found < 2; i++)
+			if ((rels[i].r_info & 0xff) == R_ARM_ABS32)
+				ref_offs[ref_found++] = rels[i].r_offset;
 	}
 
 	if (ref_found < 2) {
@@ -501,43 +509,62 @@ static int patch_rela_offsets(ElfFile *ef, ElfFile *ref_ef) {
 		return -1;
 	}
 
-	/* Patch target relocation offsets */
-	int patched = 0;
+	/* Patch the target's ABS64/ABS32 entries to the reference offsets. */
+	int tgt_found = 0, patched = 0;
 	if (ef->is64) {
+		int tgt_init_idx = find_symbol_index(ef, "init_module");
+		int tgt_exit_idx = find_symbol_index(ef, "cleanup_module");
 		size_t n = tgt_size / sizeof(Elf64_Rela);
 		Elf64_Rela *rels = (Elf64_Rela *)tgt_data;
-		for (size_t i = 0; i < n; i++) {
-			uint32_t sym = (uint32_t)(rels[i].r_info >> 32);
-			if ((int)sym == tgt_init_idx && rels[i].r_offset != ref_init_off) {
+		for (size_t i = 0; i < n && tgt_found < 2; i++) {
+			uint32_t sym  = (uint32_t)(rels[i].r_info >> 32);
+			uint32_t type = (uint32_t)(rels[i].r_info & 0xffffffff);
+			if (type != R_AARCH64_ABS64) continue;
+			/* Match by named symbol if available, else by order. */
+			int is_init = (tgt_init_idx >= 0 && (int)sym == tgt_init_idx)
+			              || (tgt_init_idx < 0 && tgt_found == 0);
+			int is_exit = (tgt_exit_idx >= 0 && (int)sym == tgt_exit_idx)
+			              || (tgt_exit_idx < 0 && tgt_found == 1);
+			if (is_init && rels[i].r_offset != ref_offs[0]) {
 				printf("  Fixing init offset: 0x%llx -> 0x%llx\n",
 				       (unsigned long long)rels[i].r_offset,
-				       (unsigned long long)ref_init_off);
-				rels[i].r_offset = ref_init_off;
+				       (unsigned long long)ref_offs[0]);
+				rels[i].r_offset = ref_offs[0];
 				patched++;
-			} else if ((int)sym == tgt_exit_idx && rels[i].r_offset != ref_exit_off) {
+			} else if (is_exit && rels[i].r_offset != ref_offs[1]) {
 				printf("  Fixing exit offset: 0x%llx -> 0x%llx\n",
 				       (unsigned long long)rels[i].r_offset,
-				       (unsigned long long)ref_exit_off);
-				rels[i].r_offset = ref_exit_off;
+				       (unsigned long long)ref_offs[1]);
+				rels[i].r_offset = ref_offs[1];
 				patched++;
 			}
+			tgt_found++;
 		}
 	} else {
+		int tgt_init_idx = find_symbol_index(ef, "init_module");
+		int tgt_exit_idx = find_symbol_index(ef, "cleanup_module");
 		size_t n = tgt_size / sizeof(Elf32_Rela);
 		Elf32_Rela *rels = (Elf32_Rela *)tgt_data;
-		for (size_t i = 0; i < n; i++) {
-			uint32_t sym = rels[i].r_info >> 8;
-			if ((int)sym == tgt_init_idx && rels[i].r_offset != ref_init_off) {
-				printf("  Fixing init offset: 0x%x -> 0x%lx\n",
-				       rels[i].r_offset, (unsigned long)ref_init_off);
-				rels[i].r_offset = (uint32_t)ref_init_off;
+		for (size_t i = 0; i < n && tgt_found < 2; i++) {
+			uint32_t sym  = rels[i].r_info >> 8;
+			uint32_t type = rels[i].r_info & 0xff;
+			if (type != R_ARM_ABS32) continue;
+			int is_init = (tgt_init_idx >= 0 && (int)sym == tgt_init_idx)
+			              || (tgt_init_idx < 0 && tgt_found == 0);
+			int is_exit = (tgt_exit_idx >= 0 && (int)sym == tgt_exit_idx)
+			              || (tgt_exit_idx < 0 && tgt_found == 1);
+			if (is_init && rels[i].r_offset != (uint32_t)ref_offs[0]) {
+				printf("  Fixing init offset: 0x%x -> 0x%llx\n",
+				       rels[i].r_offset, (unsigned long long)ref_offs[0]);
+				rels[i].r_offset = (uint32_t)ref_offs[0];
 				patched++;
-			} else if ((int)sym == tgt_exit_idx && rels[i].r_offset != ref_exit_off) {
-				printf("  Fixing exit offset: 0x%x -> 0x%lx\n",
-				       rels[i].r_offset, (unsigned long)ref_exit_off);
-				rels[i].r_offset = (uint32_t)ref_exit_off;
+			} else if (is_exit && rels[i].r_offset != (uint32_t)ref_offs[1]) {
+				printf("  Fixing exit offset: 0x%x -> 0x%llx\n",
+				       rels[i].r_offset, (unsigned long long)ref_offs[1]);
+				rels[i].r_offset = (uint32_t)ref_offs[1];
 				patched++;
 			}
+			tgt_found++;
 		}
 	}
 
