@@ -24,7 +24,9 @@
  */
 
 	.section .text.__cfi_check,"ax",@progbits
-	.globl __cfi_check
+	/* LOCAL: kernel's find_module_sym won't find this → mod->cfi_check=NULL
+	 * → add_module_to_shadow takes early return on 4.19/5.10/6.x, no BUG_ON. */
+	.local __cfi_check
 	.type __cfi_check, %function
 __cfi_check:
 	/* Check hash #1: void (*)(void) = 0x02b3a43e29242445 */
@@ -73,7 +75,7 @@ __cfi_check:
 	b	__cfi_check_fail
 
 	.section .text.__cfi_check_fail,"ax",@progbits
-	.globl __cfi_check_fail
+	.local __cfi_check_fail
 	.type __cfi_check_fail, %function
 __cfi_check_fail:
 	/* Suppression gate: if diag == NULL or *(u8*)diag >= 5, return silently.

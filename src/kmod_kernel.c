@@ -42,6 +42,7 @@ void resolve_printk(void)
 __attribute__((no_sanitize("cfi"), no_sanitize("kcfi")))
 static unsigned long strat_kprobe_kallsyms(void)
 {
+    if (!register_kprobe) return 0;   /* not exported on this kernel (e.g. 4.19 prod) */
     struct kprobe kp;
     memset(&kp, 0, sizeof(kp));
     kp.symbol_name = "kallsyms_lookup_name";

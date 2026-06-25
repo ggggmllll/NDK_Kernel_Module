@@ -44,11 +44,11 @@ void __cfi_slowpath(u64 id, void *ptr, void *diag);
 /* =========================================================================
  * 内存分配
  * ========================================================================= */
-extern void *vmalloc(unsigned long size);
-extern void vfree(const void *addr);
-extern void *kvmalloc(unsigned long size);
-extern void *kmalloc(unsigned long size, unsigned int flags);
-extern void kfree(const void *addr);
+extern void *vmalloc(unsigned long size) __attribute__((weak));
+extern void vfree(const void *addr) __attribute__((weak));
+extern void *kvmalloc(unsigned long size) __attribute__((weak));
+extern void *kmalloc(unsigned long size, unsigned int flags) __attribute__((weak));
+extern void kfree(const void *addr) __attribute__((weak));
 
 /* =========================================================================
  * 同步：mutex（不透明，只把地址传给内核）
@@ -63,9 +63,9 @@ struct mutex {
 struct lock_class_key {
     char __opaque[64];   /* CONFIG_LOCKDEP 下含 subkeys[8] */
 };
-extern void __mutex_init(struct mutex *m, const char *name, struct lock_class_key *key);
-extern void mutex_lock(struct mutex *m);
-extern void mutex_unlock(struct mutex *m);
+extern void __mutex_init(struct mutex *m, const char *name, struct lock_class_key *key) __attribute__((weak));
+extern void mutex_lock(struct mutex *m) __attribute__((weak));
+extern void mutex_unlock(struct mutex *m) __attribute__((weak));
 
 /* =========================================================================
  * kprobe —— kallsyms_init 的后备策略用
@@ -79,8 +79,8 @@ struct kprobe {
     const char *symbol_name;     /* offset 48 */
     char __opaque[272];
 };
-extern int register_kprobe(struct kprobe *p);
-extern void unregister_kprobe(struct kprobe *p);
+extern int register_kprobe(struct kprobe *p) __attribute__((weak));
+extern void unregister_kprobe(struct kprobe *p) __attribute__((weak));
 
 /* =========================================================================
  * 文件 I/O（最小结构，匹配 Linux 5.10 arm64 布局）
@@ -115,12 +115,12 @@ struct kvec {
     unsigned long iov_len;
 };
 
-extern int filp_close(struct file *filp, void *id);
-extern long long vfs_llseek(struct file *filp, long long offset, int origin);
-extern long seq_read(struct file *, char *, size_t, long long *);
+extern int filp_close(struct file *filp, void *id) __attribute__((weak));
+extern long long vfs_llseek(struct file *filp, long long offset, int origin) __attribute__((weak));
+extern long seq_read(struct file *, char *, size_t, long long *) __attribute__((weak));
 extern void iov_iter_kvec(struct iov_iter *i, unsigned int direction,
                           const struct kvec *kvec, unsigned long nr_segs,
-                          unsigned long count);
+                          unsigned long count) __attribute__((weak));
 
 /* 内核态读文件：优先 read_iter（支持 kernel buffer，ITER_KVEC），否则退到
  * f_op->read（/proc 类文件）。*pos 为文件偏移，返回读取字节数。*/
